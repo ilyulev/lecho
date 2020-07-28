@@ -1,4 +1,4 @@
-module github.com/ilyulev/lecho/v2.1
+module github.com/ilyulev/lecho/v2
 
 go 1.13
 
