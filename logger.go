@@ -12,33 +12,24 @@ import (
 // Logger is a wrapper around `zerolog.Logger` that provides an implementation of `echo.Logger` interface
 type Logger struct {
 	echo.Logger
-	log     *zerolog.Logger
+	log     zerolog.Logger
 	out     io.Writer
 	level   log.Lvl
 	prefix  string
 	setters []Setter
 }
 
-// NewWithLogger returns a new Logger instance with proconfigured external zerolog logger instance
-func NewWithLogger(out io.Writer, logger *zerolog.Logger, setters ...Setter) *Logger {
+// New returns a new Logger instance
+func New(out io.Writer, setters ...Setter) *Logger {
 	opts := newOptions(out, setters)
 
-	if logger == nil {
-		l := opts.context.Logger()
-		logger = &l
-	}
 	return &Logger{
 		out:     out,
-		log:     logger,
+		log:     opts.context.Logger(),
 		level:   opts.level,
 		prefix:  opts.prefix,
 		setters: setters,
 	}
-}
-
-// New returns a new Logger instance
-func New(out io.Writer, setters ...Setter) *Logger {
-	return NewWithLogger(out, nil, setters...)
 }
 
 func (l Logger) Debug(i ...interface{}) {
@@ -131,8 +122,7 @@ func (l Logger) Output() io.Writer {
 
 func (l *Logger) SetOutput(newOut io.Writer) {
 	l.out = newOut
-	lg := l.log.Output(newOut)
-	l.log = &lg
+	l.log = l.log.Output(newOut)
 }
 
 func (l Logger) Level() log.Lvl {
@@ -144,8 +134,7 @@ func (l *Logger) SetLevel(level log.Lvl) {
 
 	l.setters = append(l.setters, WithLevel(elvl))
 	l.level = elvl
-	lg := l.log.Level(zlvl)
-	l.log = &lg
+	l.log = l.log.Level(zlvl)
 }
 
 func (l Logger) Prefix() string {
@@ -162,8 +151,7 @@ func (l *Logger) SetPrefix(newPrefix string) {
 
 	l.setters = setters
 	l.prefix = newPrefix
-	lg := opts.context.Logger()
-	l.log = &lg
+	l.log = opts.context.Logger()
 }
 
 func (l Logger) Clone(setters ...Setter) *Logger {

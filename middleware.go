@@ -1,23 +1,37 @@
 package lecho
 
 import (
+	"bufio"
+	"bytes"
+	"io"
+	"io/ioutil"
+	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/pquerna/ffjson/ffjson"
 )
 
 type (
 	Config struct {
-		Logger  *Logger
-		Skipper middleware.Skipper
+		Logger       *Logger
+		Skipper      middleware.Skipper
+		DumpRequest  bool
+		DumpResponse bool
 	}
 
 	Context struct {
 		echo.Context
 		logger *Logger
+	}
+
+	bodyDumpResponseWriter struct {
+		io.Writer
+		http.ResponseWriter
 	}
 )
 
@@ -94,7 +108,54 @@ func Middleware(config Config) echo.MiddlewareFunc {
 			evt.Str("bytes_out", strconv.FormatInt(res.Size, 10))
 			evt.Msg("")
 
+			//request log
+			if config.DumpRequest {
+				reqBody := []byte{}
+				if c.Request().Body != nil { // Read
+					reqBody, _ = ioutil.ReadAll(c.Request().Body)
+				}
+				c.Request().Body = ioutil.NopCloser(bytes.NewBuffer(reqBody)) // Reset
+				var reqobj interface{}
+				err = ffjson.Unmarshal(reqBody, reqobj)
+				if err == nil {
+					evt.Interface("request", reqobj)
+				}
+			}
+
+			//response log
+			if config.DumpResponse {
+				resBody := new(bytes.Buffer)
+				mw := io.MultiWriter(c.Response().Writer, resBody)
+				writer := &bodyDumpResponseWriter{Writer: mw, ResponseWriter: c.Response().Writer}
+				c.Response().Writer = writer
+
+				var resobj interface{}
+				err = ffjson.Unmarshal(resBody.Bytes(), resobj)
+				if err == nil {
+					evt.Interface("response", resobj)
+				}
+			}
+			if err = next(c); err != nil {
+				c.Error(err)
+			}
+
 			return err
 		}
 	}
+}
+
+func (w *bodyDumpResponseWriter) WriteHeader(code int) {
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *bodyDumpResponseWriter) Write(b []byte) (int, error) {
+	return w.Writer.Write(b)
+}
+
+func (w *bodyDumpResponseWriter) Flush() {
+	w.ResponseWriter.(http.Flusher).Flush()
+}
+
+func (w *bodyDumpResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return w.ResponseWriter.(http.Hijacker).Hijack()
 }
